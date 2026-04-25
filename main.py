@@ -1,4 +1,13 @@
-from fastapi import Depends, FastAPI, HTTPException, status
+from pathlib import Path
+import shutil
+
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    UploadFile,
+    status, File
+)
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -85,3 +94,20 @@ def delete_user(user_id: int, db: db_connection):
     db.delete(db_user)
     db.commit()
     return {"detail": "[INFO] User deleted successfully"}
+
+
+@app.post("/uploadfile")
+def upload_file(
+        file: UploadFile = File(...),
+):
+    with open(f"uploads/{file.filename}", "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    return {"filename": file.filename}
+
+
+@app.get("/download_file/{filename}", response_class=FileResponse)
+def download_file(filename: str):
+    if not Path(f"uploads/{filename}").exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="[ERROR] File not found")
+
+    return FileResponse(f"uploads/{filename}", filename=filename)
