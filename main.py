@@ -19,6 +19,13 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+
+class ResponseDetails:
+    user_not_found: str = "[INFO] User not found"
+    user_deleted: str = "[INFO] User deleted successfully"
+
+
+
 class UserBody(BaseModel):
     name: str
     email: str
@@ -38,7 +45,7 @@ def get_user(user_id: int, db: db_connection):
         ).first()
     )
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="[ERROR] User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ResponseDetails.user_not_found)
     return user
 
 
@@ -73,7 +80,7 @@ def update_user(
     if db_user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="[ERROR] User not found"
+            detail=ResponseDetails.user_not_found
         )
     db_user.name = user.name
     db_user.email = user.email
