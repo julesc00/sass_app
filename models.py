@@ -16,10 +16,10 @@ class User(Base):
 
 
 class Task(BaseModel):
-    title: Mapped[str]
-    description: Mapped[str]
-    status: Mapped[str]
+    title: str
+    description: str
+    status: str
 
 
 class TaskWithId(Task):
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: int
