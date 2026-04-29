@@ -23,3 +23,6 @@ class Task(BaseModel):
 
 class TaskWithId(Task):
     id: int
+    title: str
+    description: str
+    status: str

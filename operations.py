@@ -9,18 +9,18 @@ DATABASE_FILENAME = "tasks.csv"
 column_fields = ["id", "title", "description", "status"]
 
 def read_all_tasks() -> list[TaskWithId]:
-    with open(DATABASE_FILENAME) as csvfile:
+    with open(DATABASE_FILENAME, encoding="utf-8-sig") as csvfile:
         reader = csv.DictReader(csvfile)
-        return [TaskWithId(**row) for row in reader]
+        return [TaskWithId(**{**row, "id": int(row["id"])}) for row in reader]
 
 
 def read_task(task_id: int) -> Optional[TaskWithId]:
-    with open(DATABASE_FILENAME) as csvfile:
+    with open(DATABASE_FILENAME, encoding="utf-8-sig") as csvfile:
         reader = csv.DictReader(csvfile)
 
         for row in reader:
             if int(row["id"]) == task_id:
-                return TaskWithId(**row)
+                return TaskWithId(**{**row, "id": int(row["id"])})
         return None
 
 
@@ -38,6 +38,14 @@ def write_task_into_csv(task: TaskWithId) -> None:
     with open(DATABASE_FILENAME, mode="a") as file:
         writer = csv.DictWriter(file, fieldnames=column_fields)
         writer.writerow(task.model_dump())
+
+
+def create_task(task: TaskWithId) -> TaskWithId:
+    task_id = get_next_id()
+    task_w_id = TaskWithId(id=task_id, **task.model_dump())
+    write_task_into_csv(task=task_w_id)
+
+    return task_w_id
 
 
 def modify_task(task_id: int, task: dict) -> Optional[TaskWithId]:

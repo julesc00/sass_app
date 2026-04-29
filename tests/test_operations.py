@@ -138,6 +138,35 @@ class TestWriteTaskIntoCsv:
 
 
 # ---------------------------------------------------------------------------
+# create_task
+# ---------------------------------------------------------------------------
+
+class TestCreateTask:
+    def test_returns_task_with_id_instance(self):
+        task = Task(title="New Task", description="New Desc", status="Pending")
+        result = operations.create_task(task)
+        assert isinstance(result, TaskWithId)
+
+    def test_assigns_next_id(self):
+        task = Task(title="New Task", description="New Desc", status="Pending")
+        result = operations.create_task(task)
+        assert result.id == 3  # max(1, 2) + 1
+
+    def test_task_is_persisted_to_csv(self):
+        task = Task(title="New Task", description="New Desc", status="Pending")
+        operations.create_task(task)
+        tasks = operations.read_all_tasks()
+        assert len(tasks) == 3
+
+    def test_created_task_fields_are_correct(self):
+        task = Task(title="New Task", description="New Desc", status="Pending")
+        result = operations.create_task(task)
+        assert result.title == "New Task"
+        assert result.description == "New Desc"
+        assert result.status == "Pending"
+
+
+# ---------------------------------------------------------------------------
 # modify_task
 # ---------------------------------------------------------------------------
 
