@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 from fastapi import (
@@ -28,13 +30,30 @@ class UpdateTask(BaseModel):
 
 
 @app.get("/tasks", response_model=list[TaskWithId])
-def get_tasks():
-    return read_all_tasks()
+def get_tasks(
+        status: Optional[str] = None,
+        title: Optional[str] = None,
+):
+    tasks = read_all_tasks()
+    if status:
+        tasks = [task for task in tasks if task.status == status]
+    if title:
+        tasks = [task for task in tasks if task.title == title]
+
+    return tasks
+
+
+@app.get("/tasks/search", response_model=list[TaskWithId])
+def search_tasks(keyword: str):
+    tasks = read_all_tasks()
+    filtered_tasks  = [task for task in tasks if keyword.lower() in (task.title + task.description).lower()]
+
+    return filtered_tasks
 
 
 @app.get("/tasks/{task_id}", response_model=TaskWithId)
 def get_task(task_id: int):
-    task = read_task(task_id=ask_id)
+    task = read_task(task_id=task_id)
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     return task

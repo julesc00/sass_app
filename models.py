@@ -21,8 +21,23 @@ class Task(BaseModel):
     status: str
 
 
+class TaskV2(BaseModel):
+    title: str
+    description: str
+    status: str
+    priority: str | None = None
+
+
 class TaskWithId(Task):
     id: int
     title: str
     description: str
     status: str
+
+
+class TaskWithIdV2(TaskV2):
+    id: int
+    title: str
+    description: str
+    status: str
+    priority: str | None = None
