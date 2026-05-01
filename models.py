@@ -1,5 +1,4 @@
-from pydantic import EmailStr, field_validator, BaseModel
-from sqlalchemy import Column, Integer
+from pydantic import BaseModel
 from sqlalchemy.orm import (
     Mapped,
     mapped_column
@@ -30,14 +29,7 @@ class TaskV2(BaseModel):
 
 class TaskWithId(Task):
     id: int
-    title: str
-    description: str
-    status: str
 
 
 class TaskWithIdV2(TaskV2):
     id: int
-    title: str
-    description: str
-    status: str
-    priority: str | None = None

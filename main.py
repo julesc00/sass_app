@@ -1,95 +1,31 @@
-from enum import StrEnum
-from typing import Optional
+from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
 
-from pydantic import BaseModel
+from routers import auth, v2_tasks, tasks, users
 
-from fastapi import (
-    FastAPI,
-    HTTPException,
-    status
+
+def custom_openapi():
+    """Hide and endpoint."""
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title="Custom API",
+        description="My Custom API",
+        version=".0",
+        routes=app.routes,
+    )
+    del openapi_schema["paths"]["/auth/token"]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app = FastAPI(
+    title="Task Manager API",
+    description="This is a task management API",
+    version="1.0",
 )
 
-from models import (
-    Task,
-    TaskWithId,
-    TaskV2,
-    TaskWithIdV2
-)
-from operations import (
-    read_all_tasks,
-    read_task,
-    create_task,
-    modify_task,
-    remove_task,
-    read_all_tasks_v2
-)
-
-app = FastAPI()
-
-
-class ResMsg(StrEnum):
-    task_not_found = "[ERROR] Task not found"
-    task_already_exists = "[INFO] Task already exists"
-
-
-class UpdateTask(BaseModel):
-    title: str | None = None
-    description: str | None = None
-    status: str | None = None
-
-
-@app.get("/tasks", response_model=list[TaskWithId])
-def get_tasks(
-        status: Optional[str] = None,
-        title: Optional[str] = None,
-):
-    tasks = read_all_tasks()
-    if status:
-        tasks = [task for task in tasks if task.status == status]
-    if title:
-        tasks = [task for task in tasks if task.title == title]
-
-    return tasks
-
-
-@app.get("/v2/tasks", response_model=list[TaskWithIdV2])
-def get_all_tasks_v2():
-    tasks = read_all_tasks_v2()
-    return tasks
-
-
-@app.get("/tasks/search", response_model=list[TaskWithId])
-def search_tasks(keyword: str):
-    tasks = read_all_tasks()
-    filtered_tasks  = [task for task in tasks if keyword.lower() in (task.title + task.description).lower()]
-
-    return filtered_tasks
-
-
-@app.get("/tasks/{task_id}", response_model=TaskWithId)
-def get_task(task_id: int):
-    task = read_task(task_id=task_id)
-    if not task:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ResMsg.task_not_found)
-    return task
-
-
-@app.post("/tasks", response_model=TaskWithId)
-def add_task(task: Task):
-    return create_task(task=task)
-
-
-@app.put("/tasks/{task_id}", response_model=TaskWithId)
-def update_task(task_id: int, task_update: UpdateTask):
-    modified = modify_task(task_id=task_id, task=task_update)
-    if not modified:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ResMsg.task_not_found)
-    return modified
-
-
-@app.delete("/tasks/{task_id}", response_model=Task)
-def delete_task(task_id: int):
-    deleted = remove_task(task_id=task_id)
-    if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ResMsg.task_not_found)
-    return deleted
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(tasks.router)
+app.include_router(v2_tasks.router)
