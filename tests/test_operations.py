@@ -1,234 +1,120 @@
-import csv
 import pytest
-from unittest.mock import patch
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from models import Task, TaskWithId
-import operations
+from database import Base
+from models import User
+from operations import add_user, pwd_context
+
+# ---------------------------------------------------------------------------
+# In-memory test database
+# ---------------------------------------------------------------------------
+
+TEST_DATABASE_URL = "sqlite:///:memory:"
+
+
+@pytest.fixture
+def session():
+    engine = create_engine(
+        TEST_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    SessionLocal = sessionmaker(bind=engine)
+    db = SessionLocal()
+    yield db
+    db.close()
+    Base.metadata.drop_all(bind=engine)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-COLUMN_FIELDS = ["id", "title", "description", "status"]
-
-
-def _write_csv(path, rows: list[dict]) -> None:
-    """Write a CSV file with the standard task headers."""
-    with open(path, mode="w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=COLUMN_FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
-
-
-def _sample_rows() -> list[dict]:
-    return [
-        {"id": "1", "title": "Task One", "description": "Desc One", "status": "Incomplete"},
-        {"id": "2", "title": "Task Two", "description": "Desc Two", "status": "Ongoing"},
-    ]
+VALID_USER = {
+    "username": "johndoe",
+    "email": "john@example.com",
+    "password": "secret123",
+}
 
 
 # ---------------------------------------------------------------------------
-# Fixture: redirect DATABASE_FILENAME to a temp file for every test
+# add_user
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(autouse=True)
-def csv_file(tmp_path):
-    """Create a temp CSV pre-populated with sample data and patch the module."""
-    temp_csv = tmp_path / "tasks.csv"
-    _write_csv(temp_csv, _sample_rows())
+class TestAddUser:
+    def test_returns_user_instance(self, session):
+        user = add_user(session=session, **VALID_USER)
+        assert isinstance(user, User)
 
-    with patch.object(operations, "DATABASE_FILENAME", str(temp_csv)):
-        yield temp_csv
+    def test_username_is_stored(self, session):
+        user = add_user(session=session, **VALID_USER)
+        assert user.username == VALID_USER["username"]
 
+    def test_email_is_stored(self, session):
+        user = add_user(session=session, **VALID_USER)
+        assert user.email == VALID_USER["email"]
 
-# ---------------------------------------------------------------------------
-# read_all_tasks
-# ---------------------------------------------------------------------------
+    def test_password_is_hashed(self, session):
+        user = add_user(session=session, **VALID_USER)
+        assert user.hashed_password != VALID_USER["password"]
 
-class TestReadAllTasks:
-    def test_returns_list_of_task_with_id(self):
-        tasks = operations.read_all_tasks()
-        assert isinstance(tasks, list)
-        assert all(isinstance(t, TaskWithId) for t in tasks)
+    def test_hashed_password_verifies(self, session):
+        user = add_user(session=session, **VALID_USER)
+        assert pwd_context.verify(VALID_USER["password"], user.hashed_password)
 
-    def test_returns_correct_count(self):
-        tasks = operations.read_all_tasks()
-        assert len(tasks) == 2
+    def test_id_is_assigned(self, session):
+        user = add_user(session=session, **VALID_USER)
+        assert user.id is not None
+        assert isinstance(user.id, int)
 
-    def test_fields_are_mapped_correctly(self):
-        tasks = operations.read_all_tasks()
-        assert tasks[0].id == 1
-        assert tasks[0].title == "Task One"
-        assert tasks[0].description == "Desc One"
-        assert tasks[0].status == "Incomplete"
+    def test_user_is_persisted_in_db(self, session):
+        add_user(session=session, **VALID_USER)
+        result = session.query(User).filter_by(username=VALID_USER["username"]).first()
+        assert result is not None
 
-    def test_empty_csv_returns_empty_list(self, tmp_path):
-        empty_csv = tmp_path / "empty.csv"
-        _write_csv(empty_csv, [])
-        with patch.object(operations, "DATABASE_FILENAME", str(empty_csv)):
-            assert operations.read_all_tasks() == []
+    def test_default_role_is_basic(self, session):
+        user = add_user(session=session, **VALID_USER)
+        assert user.role == "basic"
 
+    def test_totp_secret_is_none_by_default(self, session):
+        user = add_user(session=session, **VALID_USER)
+        assert user.totp_secret is None
 
-# ---------------------------------------------------------------------------
-# read_task
-# ---------------------------------------------------------------------------
-
-class TestReadTask:
-    def test_returns_correct_task(self):
-        task = operations.read_task(1)
-        assert task is not None
-        assert task.id == 1
-        assert task.title == "Task One"
-
-    def test_returns_second_task(self):
-        task = operations.read_task(2)
-        assert task is not None
-        assert task.id == 2
-
-    def test_returns_none_for_missing_id(self):
-        task = operations.read_task(999)
-        assert task is None
-
-    def test_returns_task_with_id_instance(self):
-        task = operations.read_task(1)
-        assert isinstance(task, TaskWithId)
-
-
-# ---------------------------------------------------------------------------
-# get_next_id
-# ---------------------------------------------------------------------------
-
-class TestGetNextId:
-    def test_returns_max_id_plus_one(self):
-        next_id = operations.get_next_id()
-        assert next_id == 3  # max(1, 2) + 1
-
-    def test_returns_1_when_file_not_found(self, tmp_path):
-        missing = tmp_path / "nonexistent.csv"
-        with patch.object(operations, "DATABASE_FILENAME", str(missing)):
-            assert operations.get_next_id() == 1
-
-    def test_returns_1_when_csv_is_empty(self, tmp_path):
-        empty_csv = tmp_path / "empty.csv"
-        _write_csv(empty_csv, [])
-        with patch.object(operations, "DATABASE_FILENAME", str(empty_csv)):
-            assert operations.get_next_id() == 1
-
-
-# ---------------------------------------------------------------------------
-# write_task_into_csv
-# ---------------------------------------------------------------------------
-
-class TestWriteTaskIntoCsv:
-    def test_appends_new_task(self):
-        new_task = TaskWithId(id=3, title="Task Three", description="Desc Three", status="Done")
-        operations.write_task_into_csv(new_task)
-        tasks = operations.read_all_tasks()
-        assert len(tasks) == 3
-
-    def test_appended_task_has_correct_fields(self):
-        new_task = TaskWithId(id=3, title="Task Three", description="Desc Three", status="Done")
-        operations.write_task_into_csv(new_task)
-        tasks = operations.read_all_tasks()
-        last = tasks[-1]
-        assert last.id == 3
-        assert last.title == "Task Three"
-        assert last.status == "Done"
-
-
-# ---------------------------------------------------------------------------
-# create_task
-# ---------------------------------------------------------------------------
-
-class TestCreateTask:
-    def test_returns_task_with_id_instance(self):
-        task = Task(title="New Task", description="New Desc", status="Pending")
-        result = operations.create_task(task)
-        assert isinstance(result, TaskWithId)
-
-    def test_assigns_next_id(self):
-        task = Task(title="New Task", description="New Desc", status="Pending")
-        result = operations.create_task(task)
-        assert result.id == 3  # max(1, 2) + 1
-
-    def test_task_is_persisted_to_csv(self):
-        task = Task(title="New Task", description="New Desc", status="Pending")
-        operations.create_task(task)
-        tasks = operations.read_all_tasks()
-        assert len(tasks) == 3
-
-    def test_created_task_fields_are_correct(self):
-        task = Task(title="New Task", description="New Desc", status="Pending")
-        result = operations.create_task(task)
-        assert result.title == "New Task"
-        assert result.description == "New Desc"
-        assert result.status == "Pending"
-
-
-# ---------------------------------------------------------------------------
-# modify_task
-# ---------------------------------------------------------------------------
-
-class TestModifyTask:
-    def test_returns_updated_task(self):
-        updated = operations.modify_task(1, {"title": "Updated Title"})
-        assert updated is not None
-        assert updated.title == "Updated Title"
-
-    def test_updated_task_is_task_with_id_instance(self):
-        updated = operations.modify_task(1, {"status": "Done"})
-        assert isinstance(updated, TaskWithId)
-
-    def test_update_persists_to_csv(self):
-        operations.modify_task(1, {"status": "Done"})
-        task = operations.read_task(1)
-        assert task is not None
-        assert task.status == "Done"
-
-    def test_other_tasks_unchanged(self):
-        operations.modify_task(1, {"title": "Changed"})
-        task2 = operations.read_task(2)
-        assert task2 is not None
-        assert task2.title == "Task Two"
-
-    def test_returns_none_for_missing_id(self):
-        result = operations.modify_task(999, {"title": "Ghost"})
+    def test_duplicate_username_returns_none(self, session):
+        add_user(session=session, **VALID_USER)
+        result = add_user(
+            session=session,
+            username=VALID_USER["username"],
+            email="other@example.com",
+            password="pass",
+        )
         assert result is None
 
-
-# ---------------------------------------------------------------------------
-# remove_task
-# ---------------------------------------------------------------------------
-
-class TestRemoveTask:
-    def test_returns_task_on_success(self):
-        result = operations.remove_task(1)
-        assert result is not None
-        assert isinstance(result, Task)
-
-    def test_returned_task_has_correct_fields(self):
-        result = operations.remove_task(1)
-        assert result is not None
-        assert result.title == "Task One"
-        assert result.description == "Desc One"
-        assert result.status == "Incomplete"
-
-    def test_task_is_removed_from_csv(self):
-        operations.remove_task(1)
-        assert operations.read_task(1) is None
-
-    def test_remaining_tasks_are_preserved(self):
-        operations.remove_task(1)
-        tasks = operations.read_all_tasks()
-        assert len(tasks) == 1
-        assert tasks[0].id == 2
-
-    def test_returns_none_for_missing_id(self):
-        result = operations.remove_task(999)
+    def test_duplicate_email_returns_none(self, session):
+        add_user(session=session, **VALID_USER)
+        result = add_user(
+            session=session,
+            username="other_user",
+            email=VALID_USER["email"],
+            password="pass",
+        )
         assert result is None
 
-    def test_csv_unchanged_when_id_not_found(self):
-        operations.remove_task(999)
-        assert len(operations.read_all_tasks()) == 2
+    def test_duplicate_does_not_corrupt_session(self, session):
+        """After a failed duplicate insert the session should still be usable."""
+        add_user(session=session, **VALID_USER)
+        add_user(session=session, username=VALID_USER["username"],
+                 email="other@example.com", password="pass")
+        # session rolled back — original user still queryable
+        result = session.query(User).filter_by(username=VALID_USER["username"]).first()
+        assert result is not None
 
+    def test_multiple_users_can_be_added(self, session):
+        user1 = add_user(session=session, username="alice", email="alice@example.com", password="pass1")
+        user2 = add_user(session=session, username="bob", email="bob@example.com", password="pass2")
+        assert user1 is not None
+        assert user2 is not None
+        assert user1.id != user2.id

@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+from enum import StrEnum
+
 from sqlalchemy.orm import (
     Mapped,
     mapped_column
@@ -7,29 +8,17 @@ from sqlalchemy.orm import (
 from database import Base
 
 
+class Role(StrEnum):
+    basic = "basic"
+    premium = "premium"
+
+
 class User(Base):
-    __tablename__ = "user"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str]
-    email: Mapped[str]
+    __tablename__ = "users"
 
-
-class Task(BaseModel):
-    title: str
-    description: str
-    status: str
-
-
-class TaskV2(BaseModel):
-    title: str
-    description: str
-    status: str
-    priority: str | None = None
-
-
-class TaskWithId(Task):
-    id: int
-
-
-class TaskWithIdV2(TaskV2):
-    id: int
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    username: Mapped[str] = mapped_column(unique=True, index=True)
+    email: Mapped[str] = mapped_column(unique=True, index=True)
+    hashed_password: Mapped[str]
+    role: Mapped[Role] = mapped_column(default=Role.basic)
+    totp_secret: Mapped[str] = mapped_column(nullable=True)

@@ -1,8 +1,20 @@
-from enum import StrEnum
+
+from typing import Annotated
+
+from pydantic import BaseModel, EmailStr, Field
 
 
-class ResMsg(StrEnum):
-    task_not_found = "[ERROR] Task not found"
-    task_already_exists = "[INFO] Task already exists"
-    invalid_auth_credentials = "[ERROR] Invalid authentication credentials"
-    invalid_username_or_password = "[ERROR] Invalid username or password"
+class UserCreateBody(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+
+
+class UserCreateResponse(BaseModel):
+    username: str
+    email: EmailStr
+
+
+class ResponseCreateUser(BaseModel):
+    message: Annotated[str, Field(default="user created")]
+    user: UserCreateResponse

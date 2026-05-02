@@ -1,90 +1,39 @@
-import csv
-from typing import Optional
+from email_validator import validate_email, EmailNotValidError
+from passlib.context import CryptContext
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
-from models import Task, TaskWithId, TaskWithIdV2
-
-
-DATABASE_FILENAME = "tasks.csv"
-
-column_fields = ["id", "title", "description", "status"]
-
-def read_all_tasks() -> list[TaskWithId]:
-    with open(DATABASE_FILENAME, encoding="utf-8-sig") as csvfile:
-        reader = csv.DictReader(csvfile)
-        return [TaskWithId(**{**row, "id": int(row["id"])}) for row in reader]
+from models import User
 
 
-def read_all_tasks_v2() -> list[TaskWithIdV2]:
-    with open(DATABASE_FILENAME, mode="r") as csvfile:
-        reader = csv.DictReader(csvfile)
-        return [TaskWithIdV2(**row) for row in reader]
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def read_task(task_id: int) -> Optional[TaskWithId]:
-    with open(DATABASE_FILENAME, encoding="utf-8-sig") as csvfile:
-        reader = csv.DictReader(csvfile)
-
-        for row in reader:
-            if int(row["id"]) == task_id:
-                return TaskWithId(**{**row, "id": int(row["id"])})
-        return None
-
-
-def get_next_id():
+def add_user(
+        session: Session,
+        username: str,
+        password: str,
+        email: str,
+) -> User | None:
+    hashed_password = pwd_context.hash(password)
+    db_user = User(
+        username=username,
+        email=email,
+        hashed_password=hashed_password
+    )
+    session.add(db_user)
     try:
-        with open(DATABASE_FILENAME, mode="r") as csvfile:
-            reader = csv.DictReader(csvfile)
-            max_id = max([int(row["id"]) for row in reader])
-            return max_id + 1
-    except (FileNotFoundError, ValueError):
-        return 1
+        session.commit()
+        session.refresh(db_user)
+    except IntegrityError:
+        session.rollback()
+        return None
+    return db_user
 
 
-def write_task_into_csv(task: TaskWithId) -> None:
-    with open(DATABASE_FILENAME, mode="a") as file:
-        writer = csv.DictWriter(file, fieldnames=column_fields)
-        writer.writerow(task.model_dump())
-
-
-def create_task(task: TaskWithId) -> TaskWithId:
-    task_id = get_next_id()
-    task_w_id = TaskWithId(id=task_id, **task.model_dump())
-    write_task_into_csv(task=task_w_id)
-
-    return task_w_id
-
-
-def modify_task(task_id: int, task: dict) -> Optional[TaskWithId]:
-    updated_task: Optional[TaskWithId] = None
-    tasks = read_all_tasks()
-    for idx, task_ in enumerate(tasks):
-        if task_.id == task_id:
-            updated_task = task_.model_copy(update=task)
-            tasks[idx] = updated_task
-
-    with open(DATABASE_FILENAME, mode="w") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=column_fields)
-        writer.writeheader()
-        for t in tasks:
-            writer.writerow(t.model_dump())
-
-    return updated_task
-
-
-def remove_task(task_id: int) -> Optional[Task]:
-    deleted_task: Optional[TaskWithId] = None
-    tasks = read_all_tasks()
-    with open(DATABASE_FILENAME, mode="w", newline="") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=column_fields)
-        writer.writeheader()
-
-        for t in tasks:
-            if t.id == task_id:
-                deleted_task = t
-                continue
-            writer.writerow(t.model_dump())
-    if deleted_task:
-        dict_task_without_id = deleted_task.model_dump()
-        del dict_task_without_id["id"]
-        return Task(**dict_task_without_id)
-    return None
+def get_user(session: Session, username_or_email: str) -> type[User] | None:
+    try:
+        validate_email(username_or_email)
+        return session.query(User).filter(User.email == username_or_email).first()
+    except EmailNotValidError:
+        return session.query(User).filter(User.username == username_or_email).first()

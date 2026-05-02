@@ -1,63 +1,56 @@
-from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel
+from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    status
+)
+from jose import JWTError, jwt
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
-from enums import ResMsg
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
-
-fake_users_db = {
-    "johndoe": {
-        "username": "johndoe",
-        "hashed_password": "hashed_secret"
-    },
-    "janedoe": {
-        "username": "janedoe",
-        "hashed_password": "hashed_secret2"
-    }
-}
+from db_connection import get_session
+from models import User
+from operations import get_user, pwd_context
 
 
-def fakely_hash_password(password: str) -> str:
-    return f"hashed_{password}"
+SECRET_KEY = "a_very_secret_key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
-class User(BaseModel):
-    username: str
-
-
-class UserInDB(User):
-    hashed_password: str
-
-
-def get_user(db: dict, username: str) -> UserInDB | None:
-    if username in db:
-        user_dict = db[username]
-        return UserInDB(**user_dict)
-    return None
-
-
-def fake_token_generator(user: UserInDB) -> str | None:
-    # This doesn't provide any security at all
-    return f"tokenized_{user.username}"
-
-
-def fake_token_resolver(token: str) -> UserInDB | None:
-    # This doesn't provide any security at all
-    if token.startswith("tokenized_"):
-        user_id = token.removeprefix("tokenized_")
-        user = get_user(db=fake_users_db, username=user_id)
+def authenticate_user(session: Session, username_or_email: str, password: str) -> type[User] | None:
+    try:
+        user = get_user(session=session, username_or_email=username_or_email)
+        if not user or not pwd_context.verify(password, user.hashed_password):
+            return None
         return user
-    return None
+    except SQLAlchemyError:
+        return None
 
 
-def get_user_from_token(token: str = Depends(oauth2_scheme)) -> UserInDB | None:
-    user = fake_token_resolver(token=token)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ResMsg.invalid_auth_credentials,
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+def create_access_token(data: dict) -> str:
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(
+        to_encode,
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+
+    return encoded_jwt
+
+
+def decode_access_token(token: str, db_session: Session) -> type[User] | None:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str | None = payload.get("sub")
+    except JWTError:
+        return None
+
+    if not username:
+        return None
+    user = get_user(session=db_session, username_or_email=username)
     return user
