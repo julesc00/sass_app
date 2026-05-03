@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 from database import Base
 from db_connection import get_engine
-from routers import users
+from routers import users, rbac, premium_access
 
 
 @asynccontextmanager
@@ -20,3 +20,5 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="SaaS application", lifespan=lifespan)
 
 app.include_router(users.router)
+app.include_router(premium_access.router)
+app.include_router(rbac.router)
