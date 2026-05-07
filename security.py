@@ -1,11 +1,5 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    status
-)
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
