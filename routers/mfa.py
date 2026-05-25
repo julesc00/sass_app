@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from db_connection import get_session
 from operations import get_user
-from rbac import get_current_user
+from routers.rbac import get_current_user
 from responses import UserCreateResponse
 
 

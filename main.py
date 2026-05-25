@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 from database import Base
 from db_connection import get_engine
-from routers import home, users, rbac, premium_access, github_login
+from routers import home, users, rbac, premium_access, github_login, mfa
 
 
 @asynccontextmanager
@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="SaaS application", lifespan=lifespan)
 
 app.include_router(github_login.router)
+app.include_router(mfa.router)
 app.include_router(users.router)
 app.include_router(home.router)
 app.include_router(premium_access.router)
